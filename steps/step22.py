@@ -147,7 +147,7 @@ class Mul(Function):
     
     def backward(self, gy):
         x0, x1 = self.inputs[0].data, self.inputs[1].data
-        return gy * x0, gy * x1
+        return gy * x1, gy * x0
 
 class Neg(Function):
     def forward(self, x):
