@@ -1,11 +1,12 @@
 import numpy as np
 import dezero
 from dezero import cuda, utils
-from dezero.core import Function, Variable, as_variable, as_array
+from dezero.core import Function, Variable, as_variable, as_array, Config
 
 class Sin(Function):
     def forward(self, x):
-        y = np.sin(x)
+        xp = cuda.get_array_module(x)
+        y = xp.sin(x)
         return y
 
     def backward(self, gy):
@@ -18,7 +19,8 @@ def sin(x):
 
 class Cos(Function):
     def forward(self, x):
-        y = np.cos(x)
+        xp = cuda.get_array_module(x)
+        y = xp.cos(x)
         return y
 
     def backward(self, gy):
@@ -31,7 +33,8 @@ def cos(x):
 
 class Tanh(Function):
     def forward(self, x):
-        y = np.tanh(x)
+        xp = cuda.get_array_module(x)
+        y = xp.tanh(x)
         return y
 
     def backward(self, gy):
@@ -88,16 +91,23 @@ def reshape(x, shape):
     return Reshape(shape)(x)
 
 class Transpose(Function):
-    def forward(self, x):
-        y = np.transpose(x)
-        return y
-    
-    def backward(self, gy):
-        gx = transpose(gy)
-        return gx
+    def __init__(self, axes=None):
+        self.axes = axes
 
-def transpose(x):
-    return Transpose()(x)
+    def forward(self, x):
+        y = x.transpose(self.axes)
+        return y
+
+    def backward(self, gy):
+        if self.axes is None:
+            return transpose(gy)
+
+        axes_len = len(self.axes)
+        inv_axes = tuple(np.argsort([ax % axes_len for ax in self.axes]))
+        return transpose(gy, inv_axes)
+
+def transpose(x, axes=None):
+    return Transpose(axes)(x)
 
 class GetItem(Function):
     def __init__(self, slices):
@@ -140,7 +150,8 @@ class BroadcastTo(Function):
 
     def forward(self, x):
         self.x_shape = x.shape
-        y = np.broadcast_to(x, self.shape)
+        xp = cuda.get_array_module(x)
+        y = xp.broadcast_to(x, self.shape)
         return y
 
     def backward(self, gy):
@@ -343,7 +354,8 @@ def accuracy(y, t):
 
 class ReLU(Function):
     def forward(self, x):
-        y = np.maximum(x, 0.0)
+        xp = cuda.get_array_module(x)
+        y = xp.maximum(x, 0.0)
         return y
 
     def backward(self, gy):
@@ -354,3 +366,31 @@ class ReLU(Function):
 
 def relu(x):
     return ReLU()(x)
+
+def dropout(x, dropout_ratio=0.5):
+    x = as_variable(x)
+
+    if dezero.Config.train:
+        xp = cuda.get_array_module(x)
+        mask = xp.random.rand(*x.shape) > dropout_ratio
+        scale = xp.array(1.0 - dropout_ratio).astype(x.dtype)
+        y = x * mask / scale
+        return y
+    else:
+        return x
+
+from dezero.functions_conv import conv2d
+from dezero.functions_conv import deconv2d
+from dezero.functions_conv import conv2d_simple
+from dezero.functions_conv import im2col
+from dezero.functions_conv import col2im
+from dezero.functions_conv import pooling_simple
+from dezero.functions_conv import pooling
+from dezero.functions_conv import average_pooling
+from dezero.core import add
+from dezero.core import sub
+from dezero.core import rsub
+from dezero.core import mul
+from dezero.core import div
+from dezero.core import neg
+from dezero.core import pow
